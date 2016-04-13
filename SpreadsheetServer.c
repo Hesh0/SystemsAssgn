@@ -14,12 +14,6 @@ int main(void)
    close(socketfd);
 }
 
-void die(const char* errMsg)
-{
-   perror(errMsg);
-   exit(EXIT_FAILURE);
-}
-
 bool isFirstRun()
 {
     struct stat st;
@@ -60,6 +54,7 @@ void acceptConnections(int socketfd, struct sockaddr_in* cli_addr, socklen_t* cl
       newsockfd = accept(socketfd, (struct sockaddr*) &(*cli_addr), &(*cli_addr_len));
       if (newsockfd < 0)
          die("Error on accept");
+      printf("Connection accepted\n");
       if (!doSpreadsheetStuff(newsockfd))
          break;
    }
@@ -142,7 +137,7 @@ void run(char *response, Cell spreadsheet[], char *value, size_t *address, char 
    size_t addr;
    char val[IN_BUF_LIMIT];
    char cacheAddr[CELL_ADDRESS];
-   char* formatStr;
+   char formatStr[80];
    if (!recoveredSpreadSheet)
      initSpreadSheet(spreadsheet);
    displaySpreadSheetToClient(spreadsheet, socket);
@@ -460,7 +455,9 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
       strcpy(trun8, truncateOrNah(spreadsheet[i + 7].value));
       strcpy(trun9, truncateOrNah(spreadsheet[i + 8].value));
       // Renders the spreadsheet row by row
-      sprintf(formatStr, "+--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+"
+      FILE* fd = fdopen(socket, "w");
+      FILE* out = writeToSocket? fd : file;
+      fprintf(out, "+--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+"
                       "\n|              | |              | |              | |              | |              | |              | |              | |              | |              |"
                       "\n|              | |              | |              | |              | |              | |              | |              | |              | |              |"
                       "\n|      %.*s    | |      %s    | |      %s    | |      %s    | |      %s    | |      %s    | |      %s    | |      %s    | |      %s    |"
@@ -472,11 +469,14 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
               spreadsheet[i + 2].address, spreadsheet[i + 3].address, spreadsheet[i + 4].address,
               spreadsheet[i + 5].address, spreadsheet[i + 6].address,
               spreadsheet[i + 7].address, spreadsheet[i + 8].address);
+         fflush(out);
 
-      writeToSocket? SOCKET_WRITE(socket, formatStr) : fprintf(file, "%s", formatStr);
 
-      sprintf(formatStr, "\n");
-      writeToSocket? SOCKET_WRITE(socket, formatStr) : fprintf(file, "%s", formatStr);
+      // writeToSocket? SOCKET_WRITE(socket, formatStr) : fprintf(file, "%s", formatStr);
+
+      fprintf(out, "\n");
+      fflush(out);
+      // writeToSocket? SOCKET_WRITE(socket, formatStr) : fprintf(file, "%s", formatStr);
       i += 9;
    }
 

@@ -54,7 +54,7 @@ typedef struct {
     CellType type;
 } Cell;
 
-void die(const char* errMsg);
+// void die(const char* errMsg);
 bool isFirstRun();
 // init
 int initServer(struct sockaddr_in* cli_addr, socklen_t* cli_addr_len);
@@ -78,6 +78,12 @@ void displaySpreadSheetToClient(Cell spreadsheet[], int socket);
 void saveWorkSheet(Cell spreadsheet[], int socket);
 void saveLastSpreadSheet(Cell spreadsheet[]);
 bool loadLastSpreadSheet(Cell spreadsheet[], int socket);
+
+void die(const char* errMsg)
+{
+   perror(errMsg);
+   exit(EXIT_FAILURE);
+}
 
 char* readInput(char* str, int count, FILE* stream)
 {

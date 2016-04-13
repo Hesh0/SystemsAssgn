@@ -1,13 +1,20 @@
 CC=clang
 CFLAGS= -std=c11 -Wall -g
 
-clutter = SpreadSheet.txt SpreadSheet.o SpreadSheet.bin
+clutter = SpreadSheet.txt SpreadSheet.bin
 
-SpreadSheet: SpreadSheet.o
-	 clang -o ./bin/SpreadSheet SpreadSheet.o
+SpreadsheetServer: SpreadsheetServer.o
+	 clang -o ./bin/SpreadsheetServer SpreadsheetServer.o
 
-SpreadSheet.o: SpreadSheet.c SpreadSheet.h
-	clang -c SpreadSheet.c
+SpreadsheetServer.o: SpreadsheetServer.c SpreadsheetServer.h
+	clang -c SpreadsheetServer.c
+
+Client: Client.o
+	clang -o ./bin/Client Client.o 
+
+
+Client.o: Client.c SpreadsheetServer.h
+	clang -c Client.c
 
 clean:
-	rm $(clutter)
+	rm $(clutter) *.o
