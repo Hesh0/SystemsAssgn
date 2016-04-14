@@ -39,7 +39,8 @@ int initServer(struct sockaddr_in* cli_addr, socklen_t* cli_addr_len)
       die("Error on binding server");
 
    printf("Server with address %s listening on port: %d\n",LOCAL_HOST, PORT_NO);
-   listen(socketfd, 5);
+   if (listen(socketfd, 5) < 0)
+      die("Error on listen");
    *cli_addr_len = sizeof cli_addr;
 
    return socketfd;
@@ -48,6 +49,7 @@ int initServer(struct sockaddr_in* cli_addr, socklen_t* cli_addr_len)
 void acceptConnections(int socketfd, struct sockaddr_in* cli_addr, socklen_t* cli_addr_len)
 {
    int newsockfd;
+   int pid;
 
    while (true)
    {
@@ -55,8 +57,10 @@ void acceptConnections(int socketfd, struct sockaddr_in* cli_addr, socklen_t* cl
       if (newsockfd < 0)
          die("Error on accept");
       printf("Connection accepted\n");
-      if (!doSpreadsheetStuff(newsockfd))
-         break;
+
+      while(doSpreadsheetStuff(newsockfd))
+         ;
+      printf("Flowed off 1 client on to the next\n");
    }
    printf("newsockfd closed\n");
    close(newsockfd);
@@ -174,7 +178,6 @@ void run(char *response, Cell spreadsheet[], char *value, size_t *address, char 
          spreadsheet[addr].type = NUM;
          puts("NUM");
          strncpy(spreadsheet[addr].value, trimEnd(value), strlen(value)); // SEG-FAULTS HERE!
-         printf("Breakpoint\n" );
      }
      displaySpreadSheetToClient(spreadsheet, socket);
      saveWorkSheet(spreadsheet, socket);
@@ -448,7 +451,7 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
    writeToSocket = socket != -1? true : false;
    if (writeToSocket)
    {
-      printf("If writeToSocket\n");
+      // printf("If writeToSocket\n");
       fd = fdopen(socket, "w");
       // printf("fd\n");
 
@@ -480,9 +483,6 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
       strcpy(trun8, truncateOrNah(spreadsheet[i + 7].value));
       strcpy(trun9, truncateOrNah(spreadsheet[i + 8].value));
       // Renders the spreadsheet row by row
-      printf("After strcpys\n");
-
-
       out = writeToSocket? fd : file;
       fprintf(out, "+--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+"
                       "\n|              | |              | |              | |              | |              | |              | |              | |              | |              |"
@@ -499,13 +499,8 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
       fprintf(out, "\n");
       i += 9;
    }
-   // printf("pow\n");
-
    // Send buffer contents(spreadsheet) to client.
    fflush(fd);
-   printf("bam\n");
-
-   // fclose(fd);
 }
 
 /**
