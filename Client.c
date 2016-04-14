@@ -32,15 +32,21 @@ int main()
       if (numBytes < 0)
          die("Could not read from socket");
       trimEnd(buffer);
+      if (strcmp(buffer, "U got served bitch!") == 0)
+      {
+         printf("%s\n", buffer);
+         break;
+      }
       printf("%s", buffer);
+
+      // numBytes = read(socketfd, buffer, 2);
       printf("\n# ");
       readInput(buffer, IN_BUF_LIMIT, stdin);
       // printf("Buffer was %lu\n", strlen(buffer));
       numBytes = write(socketfd, buffer, strlen(buffer));
       if (numBytes < 0)
          die("Couldn't write to socket");
-      if (strcmp(buffer, "exit") == 0)
-         break;
+
    }
    close(socketfd);
 

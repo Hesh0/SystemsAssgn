@@ -23,8 +23,6 @@
 
 #define SOCKET_WRITE(socketfd, msg) write(socketfd, msg, strlen(msg) + 1)
 
-
-
 /**
  * CellType enum to determine if value in cell is numeric, alphanumeric
  * or is a formula.
