@@ -30,20 +30,20 @@ int main()
       numBytes = read(socketfd, buffer, BUFFER_SIZE);
       if (numBytes < 0)
          die("Could not read from socket");
+      trimEnd(buffer);
       printf("%s", buffer);
       memset(buffer, 0, BUFFER_SIZE);
-      // printf("Please enter a message: ");
-      readInput(buffer, BUFFER_SIZE, stdin);
-      if (strcmp(buffer, "exit") == 0)
-         break;
+      printf("\nPlease enter a resp to server: ");
+      readInput(buffer, IN_BUF_LIMIT, stdin);
+      // printf("Buffer was %lu\n", strlen(buffer));
       numBytes = write(socketfd, buffer, strlen(buffer));
       if (numBytes < 0)
          die("Couldn't write to socket");
+      if (strcmp(buffer, "exit") == 0)
+         break;
 
-      memset(buffer, 0, BUFFER_SIZE);
+      // memset(buffer, 0, BUFFER_SIZE);
    }
-
-
    // printf("%s\n", buffer);
    close(socketfd);
 

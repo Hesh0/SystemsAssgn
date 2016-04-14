@@ -10,7 +10,7 @@
 #include <netinet/in.h>
 #include <string.h>
 
-#define BUFFER_SIZE 4096
+#define BUFFER_SIZE 10000
 #define IN_BUF_LIMIT 80 // Limit for stdin, etc.
 #define GRID 81 // Size of spreadsheet.
 #define CELL_ADDRESS 3
@@ -21,7 +21,9 @@
 #define FILE_NAME "../SpreadSheet.txt"
 #define BIN_FILE "../SpreadSheet.bin"
 
-#define SOCKET_WRITE(socketfd, msg) write(socketfd, msg, strlen(msg))
+#define SOCKET_WRITE(socketfd, msg) write(socketfd, msg, strlen(msg) + 1)
+
+
 
 /**
  * CellType enum to determine if value in cell is numeric, alphanumeric
@@ -65,7 +67,7 @@ double calculateFormula(char *, FormulaType *, Cell [], size_t *);
 bool isFormula(char *, char *, FormulaType *);
 char *prepareForDisplay(char *);
 char *truncateOrNah(char *);
-char *trimEnd(char *);
+// char *trimEnd(char *);
 bool validCell(char* cellLabel);
 bool findCell(Cell[], char *, size_t *);
 bool cellAlNum(char *cellValue);
@@ -104,4 +106,16 @@ char* readInput(char* str, int count, FILE* stream)
 			continue;
 
 	return str;
+}
+
+/**
+* Trims whitespace from the end of str.
+* @param  str String to be trimmed
+* @return     trimmed string
+*/
+char *trimEnd(char *str) {
+   // Trims whitespace from the end of string
+   if (isspace(str[strlen(str) - 1]))
+      str[strlen(str) - 1] = '\0';
+   return str;
 }

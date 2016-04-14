@@ -58,6 +58,7 @@ void acceptConnections(int socketfd, struct sockaddr_in* cli_addr, socklen_t* cl
       if (!doSpreadsheetStuff(newsockfd))
          break;
    }
+   printf("newsockfd closed\n");
    close(newsockfd);
 }
 
@@ -70,22 +71,23 @@ bool doSpreadsheetStuff(int socket)
    FormulaType *formulaTypePtr = &formulaType;
    size_t addr = 0;
    size_t *addressPtr = &addr;
-   char response[BUFFER_SIZE] = "";
-   char value[] = "";
+   char response[IN_BUF_LIMIT] = "";
+   char value[IN_BUF_LIMIT] = "";
    Cell spreadsheet[GRID];
 
    memset(buffer, 0, BUFFER_SIZE);
    if (!isFirstRun())
    {
-      SOCKET_WRITE(socket, "Do you want to load last spreadsheet? y/n\n");
+      SOCKET_WRITE(socket, "Do you want to load last spreadsheet? y/n: ");
       read(socket, response, 3);
+      printf("%s\n", response);
       if (toupper(response[0]) == 'Y')
       {
          if (loadLastSpreadSheet(spreadsheet, socket) != true)
             SOCKET_WRITE(socket, "Could not load last SpreadSheet\n");
          else
          {
-            SOCKET_WRITE(socket, "Last spreadSheet loaded\n");
+            SOCKET_WRITE(socket, "Last spreadSheet loaded\n\n");
             recoveredSpreadSheet = true;
          }
       }
@@ -141,7 +143,6 @@ void run(char *response, Cell spreadsheet[], char *value, size_t *address, char 
    if (!recoveredSpreadSheet)
      initSpreadSheet(spreadsheet);
    displaySpreadSheetToClient(spreadsheet, socket);
-   saveWorkSheet(spreadsheet, socket);
 
    while (true) {
       if (!prompt(response, value, socket))
@@ -149,7 +150,10 @@ void run(char *response, Cell spreadsheet[], char *value, size_t *address, char 
       // cell guaranteed to be valid, no need for if statement.
       findCell(spreadsheet, response, address);
       addr = *address;
+      printf("Address is: %lu\n", addr);
+      printf("Value has %lu chars and is %s\n", strlen(value), value);
       sprintf(formatStr, "Old value: %s. New value: %s.\n", spreadsheet[addr].value, value);
+      printf("%s\n", value);
       SOCKET_WRITE(socket, formatStr);
 
       if (isFormula(value, formula, fType)) {
@@ -169,9 +173,9 @@ void run(char *response, Cell spreadsheet[], char *value, size_t *address, char 
      } else {
          spreadsheet[addr].type = NUM;
          puts("NUM");
-         strcpy(spreadsheet[addr].value, trimEnd(value));
+         strncpy(spreadsheet[addr].value, trimEnd(value), strlen(value)); // SEG-FAULTS HERE!
+         printf("Breakpoint\n" );
      }
-
      displaySpreadSheetToClient(spreadsheet, socket);
      saveWorkSheet(spreadsheet, socket);
    }
@@ -202,22 +206,27 @@ bool validCell(char* cellLabel)
 * @param value    Pointer to store value user inputted
 */
 bool prompt(char *response, char *value, int socket) {
+   // printf("In %s\n",__func__);
    SOCKET_WRITE(socket, "Enter row and column you would like to manipulate or enter 'exit' to exit program: ");
-   read(socket, response, 5);
+   read(socket, response, IN_BUF_LIMIT);
+   printf("%s\n", response);
    if (strcmp(trimEnd(response), "exit") == 0)
       return false;
+
    response[0] = toupper(response[0]);
 
-   while(!validCell(trimEnd(response)))
+   while(!validCell(response))
    {
       SOCKET_WRITE(socket, "Invalid cell. Enter cell to edit ('exit' to quit): ");
-      read(socket, response, 5);
+      read(socket, response, IN_BUF_LIMIT);
       if (strcmp(trimEnd(response), "exit") == 0)
          return false;
       response[0] = toupper(response[0]);
    }
    SOCKET_WRITE(socket, "Enter value: ");
    read(socket, value, IN_BUF_LIMIT);
+   // trimEnd(value);
+
    return true;
 }
 
@@ -430,11 +439,27 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
    size_t i;
    char cell1[DISPLAY], cell2[DISPLAY], cell3[DISPLAY], cell4[DISPLAY], cell5[DISPLAY], cell6[DISPLAY], cell7[DISPLAY], cell8[DISPLAY], cell9[DISPLAY];
    char trun1[TRUNCATE], trun2[TRUNCATE], trun3[TRUNCATE], trun4[TRUNCATE], trun5[TRUNCATE], trun6[TRUNCATE], trun7[TRUNCATE], trun8[TRUNCATE], trun9[TRUNCATE];
-   char formatStr[BUFFER_SIZE];
-   bool writeToSocket;
 
+   char buffer[BUFFER_SIZE];
+   bool writeToSocket;
+   FILE* fd = NULL;
+   FILE* out = NULL;
 
    writeToSocket = socket != -1? true : false;
+   if (writeToSocket)
+   {
+      printf("If writeToSocket\n");
+      fd = fdopen(socket, "w");
+      // printf("fd\n");
+
+      // change to full buffering instead of line buffering
+      // to hold entire spreadsheet.
+      if (setvbuf(fd, buffer, _IOFBF, BUFFER_SIZE) != 0)
+         die("Couldn't create buffer for spreadsheet");
+   }
+   printf("Created buffer\n");
+
+
    for (i = 0; i < GRID;) {
       strcpy(cell1, prepareForDisplay(spreadsheet[i].value));
       strcpy(cell2, prepareForDisplay(spreadsheet[i + 1].value));
@@ -455,8 +480,10 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
       strcpy(trun8, truncateOrNah(spreadsheet[i + 7].value));
       strcpy(trun9, truncateOrNah(spreadsheet[i + 8].value));
       // Renders the spreadsheet row by row
-      FILE* fd = fdopen(socket, "w");
-      FILE* out = writeToSocket? fd : file;
+      printf("After strcpys\n");
+
+
+      out = writeToSocket? fd : file;
       fprintf(out, "+--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+ +--------------+"
                       "\n|              | |              | |              | |              | |              | |              | |              | |              | |              |"
                       "\n|              | |              | |              | |              | |              | |              | |              | |              | |              |"
@@ -469,17 +496,16 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
               spreadsheet[i + 2].address, spreadsheet[i + 3].address, spreadsheet[i + 4].address,
               spreadsheet[i + 5].address, spreadsheet[i + 6].address,
               spreadsheet[i + 7].address, spreadsheet[i + 8].address);
-         fflush(out);
-
-
-      // writeToSocket? SOCKET_WRITE(socket, formatStr) : fprintf(file, "%s", formatStr);
-
       fprintf(out, "\n");
-      fflush(out);
-      // writeToSocket? SOCKET_WRITE(socket, formatStr) : fprintf(file, "%s", formatStr);
       i += 9;
    }
+   // printf("pow\n");
 
+   // Send buffer contents(spreadsheet) to client.
+   fflush(fd);
+   printf("bam\n");
+
+   // fclose(fd);
 }
 
 /**
@@ -570,18 +596,6 @@ bool findCell(Cell sheet[], char *cell, size_t *address) {
       }
    }
    return false;
-}
-
-/**
-* Trims whitespace from the end of str.
-* @param  str String to be trimmed
-* @return     trimmed string
-*/
-char *trimEnd(char *str) {
-   // Trims whitespace from the end of string
-   if (isspace(str[strlen(str) - 1]))
-      str[strlen(str) - 1] = '\0';
-   return str;
 }
 
 /**
