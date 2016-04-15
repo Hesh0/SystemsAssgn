@@ -124,10 +124,10 @@ void acceptConnections(int socketfd, struct sockaddr_in* cli_addr, socklen_t* cl
                      }
                   }
                }
-          }
+            }
+         }
       }
    }
-}
    // Iterative Server.
    else
    {
