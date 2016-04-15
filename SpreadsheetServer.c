@@ -70,45 +70,64 @@ void acceptConnections(int socketfd, struct sockaddr_in* cli_addr, socklen_t* cl
    int newsockfd;
 
    // Multiplex declarations
-   int ret, nfds, fd;
-   fd_set readfds, writefds;
+   int ret, nfds, fd, j;
+   fd_set masterfds, readfds, writefds;
 
-   nfds = socketfd;
+
+   FD_ZERO(&masterfds);
    FD_ZERO(&readfds);
-	FD_ZERO(&writefds);
-   FD_SET(socketfd, &readfds);
+   FD_ZERO(&writefds);
+   FD_SET(socketfd, &masterfds);
+   nfds = socketfd;
 
-   if (mode == MULTIPLEX)
+   if (mode == MULTIPLEX) // Fucked currently.
+   {
       while (true)
       {
+         readfds = masterfds;
          // adds a file descriptor to the set.
          if ((ret = select(nfds + 1, &readfds, &writefds, 0, NULL)) < 0)
             die("Error on select");
-         if (FD_ISSET(socketfd, &readfds))
+         printf("Ret was %d\n", ret);
+         printf("IS_SET? %d\n",FD_ISSET(socketfd, &readfds) );
+         for (fd = socketfd; fd <= nfds; fd++)
          {
-            newsockfd = accept(socketfd, (struct sockaddr*) &(*cli_addr), &(*cli_addr_len));
-            if (newsockfd < 0)
-               die("Error on accept");
-            nfds = newsockfd;
-            FD_SET(newsockfd, &readfds);
-            FD_SET(newsockfd, &writefds);
-            FD_CLR(socketfd, &readfds);
-         }
-         else
-         {
-            for (fd = socketfd; fd <= nfds && ret > 0; fd++)
-            {	/*The loop starts from the first comm fd */
-      		    // printf("Checking now j=%d, readfs(j) status =%d \n", j, FD_ISSET(i, &writefds));
-      	      if (FD_ISSET(fd, &readfds) == 1  && FD_ISSET(fd, &readfds) == 1)
+            if (FD_ISSET(fd, &readfds)) // got one
+            {
+               if (fd == socketfd)
                {
-                  while(doSpreadsheetStuff(fd))
+                  newsockfd = accept(socketfd, (struct sockaddr*) &(*cli_addr), &(*cli_addr_len));
+                  if (newsockfd < 0)
+                     die("Error on accept");
+                  FD_SET(newsockfd, &masterfds); // add to master set
+                  if (newsockfd > nfds)   // keep track of the max
+                     nfds = newsockfd;
+                  printf("Connection accepted\n");
+                  while(doSpreadsheetStuff(newsockfd))
                      ;
                   close(fd);
-
                }
             }
-         }
+            else // handle the input from client.
+            {
+               for(j = 0; j <= nfds; j++)
+               {
+                  // send to everyone!
+                  if (FD_ISSET(j, &masterfds))
+                  {
+                  // except the listener and ourselves
+                     if (j != socketfd && j != fd)
+                     {
+                        while (doSpreadsheetStuff(j))
+                           ;
+                        close(j);
+                     }
+                  }
+               }
+          }
       }
+   }
+}
    // Iterative Server.
    else
    {
@@ -226,10 +245,11 @@ void run(char *response, Cell spreadsheet[], char *value, size_t *address, char 
 
 
       if (isFormula(value, formula, fType)) {
-         strcpy(cacheAddr, trimEnd(response));
+         strcpy(cacheAddr, response);
          spreadsheet[addr].type = FORMULA;
          puts("FORMULA");
          sprintf(val, "%f", calculateFormula(value, fType, spreadsheet, address));
+         printf("Val is %s\n", val);
          strcpy(spreadsheet[addr].value, val);
 
          spreadsheet[addr].address[0] = cacheAddr[0];
@@ -242,7 +262,7 @@ void run(char *response, Cell spreadsheet[], char *value, size_t *address, char 
      } else {
          spreadsheet[addr].type = NUM;
          puts("NUM");
-         strcpy(spreadsheet[addr].value, trimEnd(value)); // SEG-FAULTS HERE!
+         strcpy(spreadsheet[addr].value, value); // SEG-FAULTS HERE!
      }
      displaySpreadSheetToClient(spreadsheet, socket);
      saveWorkSheet(spreadsheet, socket);
