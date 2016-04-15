@@ -18,10 +18,11 @@
 #define TRUNCATE 12 // Size of value to be displayed in each cell if truncated.
 #define LOCAL_HOST "127.0.0.1"
 #define PORT_NO 60000
+#define BACKLOG 5
 #define FILE_NAME "../SpreadSheet.txt"
 #define BIN_FILE "../SpreadSheet.bin"
 
-#define SOCKET_WRITE(socketfd, msg) write(socketfd, msg, strlen(msg) + 1)
+#define SOCKET_WRITE(socketfd, msg, flags) send(socketfd, msg, strlen(msg) + 1, flags)
 
 /**
  * CellType enum to determine if value in cell is numeric, alphanumeric
@@ -98,7 +99,10 @@ char* readInput(char* str, int count, FILE* stream)
 	}
 	find = strchr(str, '\n');
 	if (find)
+   {
 		*find = '\0';
+      //printf("Found new line\n");
+   }
 	else
 		while (getchar() != '\n')
 			continue;

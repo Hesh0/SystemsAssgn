@@ -8,8 +8,8 @@ int main()
    char buffer[BUFFER_SIZE];
    struct sockaddr_in serv_addr;
    struct hostent* server;
-   socketfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
+   socketfd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
    if (socketfd < 0)
       die("Error creating socket");
 
@@ -22,8 +22,11 @@ int main()
    serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
    serv_addr.sin_port = htons(PORT_NO);
 
-   if (connect(socketfd, (struct sockaddr* ) &serv_addr, sizeof(serv_addr)) < 0)
+   if (connect(socketfd, (struct sockaddr*) &serv_addr, sizeof(serv_addr)) < 0)
       die("Unable to connect client to server");
+   /*FILE* fd = fdopen(socketfd, "r+");
+   if (!fd)
+      die("Unable to open fd"); */
 
    while (true)
    {
@@ -31,6 +34,7 @@ int main()
       numBytes = read(socketfd, buffer, BUFFER_SIZE);
       if (numBytes < 0)
          die("Could not read from socket");
+      //fflush(fd);
       trimEnd(buffer);
       if (strcmp(buffer, "U got served bitch!") == 0)
       {
@@ -41,12 +45,16 @@ int main()
 
       // numBytes = read(socketfd, buffer, 2);
       printf("\n# ");
-      readInput(buffer, IN_BUF_LIMIT, stdin);
+      memset(buffer, 0, BUFFER_SIZE);
+      // if (shouldRead)
+      //{
+         readInput(buffer, IN_BUF_LIMIT, stdin);
       // printf("Buffer was %lu\n", strlen(buffer));
-      numBytes = write(socketfd, buffer, strlen(buffer));
-      if (numBytes < 0)
-         die("Couldn't write to socket");
-
+         numBytes = send(socketfd, buffer, strlen(buffer), 0);
+      // fflush(fd);
+         if (numBytes < 0)
+            die("Couldn't write to socket");
+      //}
    }
    close(socketfd);
 

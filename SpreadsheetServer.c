@@ -2,11 +2,28 @@
 
 static bool recoveredSpreadSheet = false;
 
-int main(void)
+const unsigned char MULTIPLEX = 1;
+const unsigned char ITERATIVE = 2;
+
+unsigned char mode;
+
+int main(int argc, char* argv[])
 {
    int socketfd;
    socklen_t cli_addr_len;
    struct sockaddr_in cli_addr;
+
+   if (argc < 2)
+      die("Usage: SpreadsheetServer mode(mult or iter)");
+   if (strcmp(argv[1], "mult") != 0 && strcmp(argv[1], "iter") != 0)
+      die("Usage: SpreadsheetServer mode(mult or iter)");
+   if (argc > 2)
+      die("Too many args\nUsage: SpreadsheetServer mode(mult or iter)");
+   if (strcmp(argv[1], "mult") == 0)
+      mode = MULTIPLEX;
+   else
+      mode = ITERATIVE;
+
 
    socketfd = initServer(&cli_addr, &cli_addr_len);
    acceptConnections(socketfd, &cli_addr, &cli_addr_len);
@@ -14,6 +31,8 @@ int main(void)
    close(socketfd);
 }
 
+// Checks for the binary file of the last saved spreadsheet to determine
+// whether to prompt for a reload.
 bool isFirstRun()
 {
     struct stat st;
@@ -39,7 +58,7 @@ int initServer(struct sockaddr_in* cli_addr, socklen_t* cli_addr_len)
       die("Error on binding server");
 
    printf("Server with address %s listening on port: %d\n",LOCAL_HOST, PORT_NO);
-   if (listen(socketfd, 5) < 0)
+   if (listen(socketfd, BACKLOG) < 0)
       die("Error on listen");
    *cli_addr_len = sizeof cli_addr;
 
@@ -50,19 +69,63 @@ void acceptConnections(int socketfd, struct sockaddr_in* cli_addr, socklen_t* cl
 {
    int newsockfd;
 
-   while (true)
-   {
-      newsockfd = accept(socketfd, (struct sockaddr*) &(*cli_addr), &(*cli_addr_len));
-      if (newsockfd < 0)
-         die("Error on accept");
-      printf("Connection accepted\n");
+   // Multiplex declarations
+   int ret, nfds, fd;
+   fd_set readfds, writefds;
 
-      while(doSpreadsheetStuff(newsockfd))
-         ;
-      printf("Flowed off 1 client on to the next\n");
+   nfds = socketfd;
+   FD_ZERO(&readfds);
+	FD_ZERO(&writefds);
+   FD_SET(socketfd, &readfds);
+
+   if (mode == MULTIPLEX)
+      while (true)
+      {
+         // adds a file descriptor to the set.
+         if ((ret = select(nfds + 1, &readfds, &writefds, 0, NULL)) < 0)
+            die("Error on select");
+         if (FD_ISSET(socketfd, &readfds))
+         {
+            newsockfd = accept(socketfd, (struct sockaddr*) &(*cli_addr), &(*cli_addr_len));
+            if (newsockfd < 0)
+               die("Error on accept");
+            nfds = newsockfd;
+            FD_SET(newsockfd, &readfds);
+            FD_SET(newsockfd, &writefds);
+            FD_CLR(socketfd, &readfds);
+         }
+         else
+         {
+            for (fd = socketfd; fd <= nfds && ret > 0; fd++)
+            {	/*The loop starts from the first comm fd */
+      		    // printf("Checking now j=%d, readfs(j) status =%d \n", j, FD_ISSET(i, &writefds));
+      	      if (FD_ISSET(fd, &readfds) == 1  && FD_ISSET(fd, &readfds) == 1)
+               {
+                  while(doSpreadsheetStuff(fd))
+                     ;
+                  close(fd);
+
+               }
+            }
+         }
+      }
+   // Iterative Server.
+   else
+   {
+      while (true)
+      {
+         newsockfd = accept(socketfd, (struct sockaddr*) &(*cli_addr), &(*cli_addr_len));
+         if (newsockfd < 0)
+            die("Error on accept");
+         printf("Connection accepted\n");
+
+         while(doSpreadsheetStuff(newsockfd))
+            ;
+         printf("Flowed off 1 client on to the next\n");
+         printf("newsockfd closed\n");
+         close(newsockfd);
+      }
    }
-   printf("newsockfd closed\n");
-   close(newsockfd);
 }
 
 bool doSpreadsheetStuff(int socket)
@@ -81,23 +144,23 @@ bool doSpreadsheetStuff(int socket)
    memset(buffer, 0, BUFFER_SIZE);
    if (!isFirstRun())
    {
-      SOCKET_WRITE(socket, "Do you want to load last spreadsheet? y/n: ");
+      SOCKET_WRITE(socket, "Do you want to load last spreadsheet? y/n: ", 0);
       read(socket, response, 3);
       printf("%s\n", response);
       if (toupper(response[0]) == 'Y')
       {
          if (loadLastSpreadSheet(spreadsheet, socket) != true)
-            SOCKET_WRITE(socket, "Could not load last SpreadSheet\n");
+            SOCKET_WRITE(socket, "Could not load last SpreadSheet\n", MSG_DONTWAIT);
          else
          {
-            SOCKET_WRITE(socket, "Last spreadSheet loaded\n");
+            SOCKET_WRITE(socket, "Last spreadSheet loaded\n", MSG_DONTWAIT);
             recoveredSpreadSheet = true;
          }
       }
    }
    run(response, spreadsheet, value, addressPtr, formula, formulaTypePtr, socket); //runs program until user quits
    saveLastSpreadSheet(spreadsheet);
-   SOCKET_WRITE(socket, "Session saved\n");
+   SOCKET_WRITE(socket, "Session saved\n", MSG_DONTWAIT);
    return false;
 }
 
@@ -110,7 +173,7 @@ bool loadLastSpreadSheet(Cell spreadsheet[], int socket)
   FILE* file = fopen(BIN_FILE, "rb+");
   if (file == NULL)
   {
-     SOCKET_WRITE(socket, "File was null\n");
+     SOCKET_WRITE(socket, "File was null\n", MSG_DONTWAIT);
      return false;
   }
 
@@ -119,8 +182,8 @@ bool loadLastSpreadSheet(Cell spreadsheet[], int socket)
   if (valsRead != GRID)
   {
      sprintf(formatStr, "Vals read = %d\n", valsRead);
-     SOCKET_WRITE(socket, formatStr);
-     SOCKET_WRITE(socket, "Well sheet not all vals read\n");
+     SOCKET_WRITE(socket, formatStr, MSG_DONTWAIT);
+     SOCKET_WRITE(socket, "Well sheet not all vals read\n", MSG_DONTWAIT);
      fclose(file);
      return false;
   }
@@ -156,8 +219,11 @@ void run(char *response, Cell spreadsheet[], char *value, size_t *address, char 
       printf("Address is: %lu\n", addr);
       printf("Value has %lu chars and is %s\n", strlen(value), value);
       sprintf(formatStr, "Old value: %s. New value: %s.\n", spreadsheet[addr].value, value);
-      // printf("%s\n", value);
-      SOCKET_WRITE(socket, formatStr);
+      // fflush(st)
+      printf("%s\n", value);
+      // SOCKET_WRITE(socket, formatStr, MSG_DONTWAIT);
+      SOCKET_WRITE(socket, "Return to reload spreadsheet", 0);
+
 
       if (isFormula(value, formula, fType)) {
          strcpy(cacheAddr, trimEnd(response));
@@ -172,18 +238,16 @@ void run(char *response, Cell spreadsheet[], char *value, size_t *address, char 
      } else if (cellAlNum(value) == true) {
          spreadsheet[addr].type = ALNUM;
          puts("ALNUM");
-         strcpy(spreadsheet[addr].value, trimEnd(value));
+         strcpy(spreadsheet[addr].value, value);
      } else {
          spreadsheet[addr].type = NUM;
          puts("NUM");
-         strncpy(spreadsheet[addr].value, trimEnd(value), strlen(value)); // SEG-FAULTS HERE!
+         strcpy(spreadsheet[addr].value, trimEnd(value)); // SEG-FAULTS HERE!
      }
      displaySpreadSheetToClient(spreadsheet, socket);
      saveWorkSheet(spreadsheet, socket);
    }
-
-   SOCKET_WRITE(socket, "U got served bitch!");
-
+   SOCKET_WRITE(socket, "U got served bitch!", MSG_DONTWAIT);
 }
 
 bool validCell(char* cellLabel)
@@ -212,23 +276,23 @@ bool validCell(char* cellLabel)
 */
 bool prompt(char *response, char *value, int socket) {
    // printf("In %s\n",__func__);
-   SOCKET_WRITE(socket, "Enter row and column you would like to manipulate or enter 'exit' to exit program: ");
+   SOCKET_WRITE(socket, "Enter row and column you would like to manipulate or enter 'exit' to exit program: ", 0);
    read(socket, response, IN_BUF_LIMIT);
    printf("%s\n", response);
-   if (strcmp(trimEnd(response), "exit") == 0)
+   if (strcmp(response, "exit") == 0)
       return false;
 
    response[0] = toupper(response[0]);
 
    while(!validCell(response) || !response)
    {
-      SOCKET_WRITE(socket, "Invalid cell. Enter cell to edit ('exit' to quit): ");
+      SOCKET_WRITE(socket, "Invalid cell. Enter cell to edit ('exit' to quit): ", 0);
       read(socket, response, IN_BUF_LIMIT);
-      if (strcmp(trimEnd(response), "exit") == 0)
+      if (strcmp(response, "exit") == 0)
          return false;
       response[0] = toupper(response[0]);
    }
-   SOCKET_WRITE(socket, "Enter value: ");
+   SOCKET_WRITE(socket, "Enter value: ", 0);
    read(socket, value, IN_BUF_LIMIT);
 
    return true;
@@ -443,7 +507,6 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
    size_t i;
    char cell1[DISPLAY], cell2[DISPLAY], cell3[DISPLAY], cell4[DISPLAY], cell5[DISPLAY], cell6[DISPLAY], cell7[DISPLAY], cell8[DISPLAY], cell9[DISPLAY];
    char trun1[TRUNCATE], trun2[TRUNCATE], trun3[TRUNCATE], trun4[TRUNCATE], trun5[TRUNCATE], trun6[TRUNCATE], trun7[TRUNCATE], trun8[TRUNCATE], trun9[TRUNCATE];
-
    char buffer[BUFFER_SIZE];
    bool writeToSocket;
    FILE* fd = NULL;
@@ -452,7 +515,6 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
    writeToSocket = socket != -1? true : false;
    if (writeToSocket)
    {
-      // printf("If writeToSocket\n");
       fd = fdopen(socket, "w");
       // printf("fd\n");
 
@@ -505,7 +567,6 @@ void renderSpreadSheet(Cell spreadsheet[], FILE* file, int socket) {
       if (setvbuf(fd, buffer, _IOLBF, IN_BUF_LIMIT) != 0)
          die("Couldn't change buffer to line buffering");
    }
-
 }
 
 /**
@@ -549,7 +610,7 @@ void saveWorkSheet(Cell spreadsheet[], int socket)
   if (file == NULL )
   {
      fprintf(stderr, "Could not open %s for writing\n", FILE_NAME);
-     SOCKET_WRITE(socket, "Sorry could not save spreadsheet\n");
+     SOCKET_WRITE(socket, "Sorry could not save spreadsheet\n", 0);
      return;
   }
   renderSpreadSheet(spreadsheet, file, -1);
@@ -621,14 +682,14 @@ char *prepareForDisplay(char *str) {
    // if string length less 4 characters, take all characters and pad with whitespace to bring length to 4
    } else {
       for (i = 0; i < 4; i++) {
-           if (str[i] == '\0') {
-               while (strlen(temp) < 4) {
-                   temp[i] = ' ';
-                   i++;
-               }
-           } else {
-               temp[i] = str[i];
-           }
+         if (str[i] == '\0') {
+            while (strlen(temp) < 4) {
+                temp[i] = ' ';
+                i++;
+            }
+        } else {
+            temp[i] = str[i];
+        }
       }
    }
    return temp;
